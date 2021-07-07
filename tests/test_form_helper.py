@@ -22,7 +22,7 @@ from django.utils.translation import gettext_lazy as _
 from .forms import SampleForm, SampleForm7, SampleForm8, SampleFormWithMedia
 
 
-def test_inputs(settings):
+def test_inputs():
     form_helper = FormHelper()
     form_helper.add_input(Submit("my-submit", "Submit", css_class="button white"))
     form_helper.add_input(Reset("my-reset", "Reset"))
@@ -220,7 +220,7 @@ def test_template_helper_access():
     assert helper["form_id"] == "test-form"
 
 
-def test_without_helper(settings):
+def test_without_helper():
     template = Template(
         """
         {% load crispy_forms_tags %}
@@ -494,7 +494,7 @@ def test_bootstrap_form_show_errors_bs5():
     assert html.count("error") == 0
 
 
-def test_error_text_inline(settings):
+def test_error_text_inline():
     form = SampleForm({"email": "invalidemail"})
     form.helper = FormHelper()
     layout = Layout(
@@ -610,7 +610,7 @@ def test_label_class_and_field_class_bs5_offset_when_horizontal():
     html = render_crispy_form(form)
 
     assert '<div class="mb-3 row">' in html
-    assert '<div class="col-lg-offset-2 col-lg-8">' in html
+    assert '<div class="offset-lg-2 col-lg-8">' in html
     assert html.count("col-lg-8") == 7
 
     # Test multi col-XX-YY pattern and col-X pattern
@@ -621,7 +621,7 @@ def test_label_class_and_field_class_bs5_offset_when_horizontal():
 
     assert '<div class="mb-3 row">' in html
     assert (
-        '<div class="col-sm-offset-3 col-md-offset-4 col-lg-offset-4 col-sm-8'
+        '<div class="offset-sm-3 offset-md-4 offset-lg-4 col-sm-8'
         ' col-md-6 col-7 col-lg-8">' in html
     )
     assert html.count("col-sm-8") == 7

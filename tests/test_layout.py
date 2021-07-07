@@ -2,9 +2,11 @@ import pytest
 from crispy_forms.bootstrap import (
     AppendedText,
     Field,
+    FieldWithButtons,
     InlineCheckboxes,
     PrependedAppendedText,
     PrependedText,
+    StrictButton,
 )
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import HTML, Column, Fieldset, Layout, Row
@@ -22,7 +24,10 @@ from .forms import (
     CrispyEmptyChoiceTestModel,
     CrispyTestModel,
     FileForm,
-    InputsFrom,
+    FileFormRequired,
+    HelpTextForm,
+    InputsForm,
+    LabelForm,
     SampleForm,
     SampleForm2,
     SampleForm3,
@@ -139,7 +144,7 @@ def test_context_pollution():
     assert html.count('name="is_company"') == 1
 
 
-def test_layout_fieldset_row_html_with_unicode_fieldnames(settings):
+def test_layout_fieldset_row_html_with_unicode_fieldnames():
     form_helper = FormHelper()
     form_helper.add_layout(
         Layout(
@@ -196,6 +201,7 @@ def test_layout_fieldset_row_html_with_unicode_fieldnames(settings):
     assert html.count("<label") == 6
 
     assert 'class="row rows"' in html
+    assert 'class="form-label' in html
 
     assert "Hello!" in html
     assert "testLink" in html
@@ -239,7 +245,7 @@ def test_change_layout_dynamically_delete_field():
     assert "email" not in html
 
 
-def test_column_has_css_classes(settings):
+def test_column_has_css_classes():
     template = Template(
         """
         {% load crispy_forms_tags %}
@@ -270,7 +276,7 @@ def test_column_has_css_classes(settings):
     assert html.count("col-md") == 1
 
 
-def test_bs5_column_css_classes(settings):
+def test_bs5_column_css_classes():
     template = Template(
         """
         {% load crispy_forms_tags %}
@@ -295,7 +301,37 @@ def test_bs5_column_css_classes(settings):
     assert html.count("col-sm") == 1
 
 
-def test_formset_layout(settings):
+def test_bs5_field_with_buttons_css_classes():
+    form = SampleForm()
+    form.helper = FormHelper()
+    form.helper.add_layout(
+        Layout(
+            Column(
+                FieldWithButtons(
+                    "email",
+                    HTML("""<a role='button' class='btn btn-primary'>click me</a>"""),
+                )
+            ),
+        )
+    )
+
+    assert parse_form(form) == parse_expected("field_with_buttons.html")
+
+    form = SampleForm3({})
+    form.helper = FormHelper()
+    form.helper.add_layout(
+        Layout(
+            Column(
+                FieldWithButtons(
+                    "email", StrictButton("Go!", css_class="btn-outline-secondary")
+                )
+            ),
+        )
+    )
+    assert parse_form(form) == parse_expected("field_with_buttons_failing.html")
+
+
+def test_formset_layout():
     SampleFormSet = formset_factory(SampleForm, extra=3)
     formset = SampleFormSet()
     helper = FormHelper()
@@ -356,7 +392,7 @@ def test_formset_layout(settings):
     assert html.count("Note for first form only") == 1
     assert html.count("row") == 3
 
-    assert html.count("mb-3") == 18
+    assert html.count("mb-3") == 21
 
 
 def test_modelformset_layout():
@@ -468,7 +504,7 @@ def test_choice_with_none_is_selected():
     assert "checked" in html
 
 
-def test_keepcontext_context_manager(settings):
+def test_keepcontext_context_manager():
     # Test case for issue #180
     # Apparently it only manifest when using render_to_response this exact way
     form = CheckboxesSampleForm()
@@ -498,14 +534,14 @@ def test_bootstrap5_form_inline():
 
 
 def test_select():
-    form = InputsFrom()
+    form = InputsForm()
     form.helper = FormHelper()
     form.helper.layout = Layout("select_input")
     assert parse_form(form) == parse_expected("test_select.html")
 
 
 def test_select_prepended():
-    form = InputsFrom()
+    form = InputsForm()
     form.helper = FormHelper()
     form.helper.layout = Layout(
         PrependedText("select_input", "bar"),
@@ -537,19 +573,22 @@ def test_file_field():
     form = FileForm()
     form.helper = FormHelper()
     form.helper.layout = Layout("clearable_file")
-    html = render_crispy_form(form)
-    assert (
-        'input type="checkbox" name="clearable_file-clear" id="clearable_file-clear_id'
-        in html
-    )
-    assert '<input type="file" name="clearable_file" class="clearablefileinput"' in html
+
+    assert parse_form(form) == parse_expected("test_clearable_file_field.html")
 
     form.helper.layout = Layout("file_field")
-    html = render_crispy_form(form)
-    assert (
-        '<input type="file" name="file_field" class="fileinput fileUpload '
-        'form-control" required id="id_file_field">' in html
-    )
+
+    assert parse_form(form) == parse_expected("test_file_field.html")
+
+    form = FileFormRequired({})
+    form.helper = FormHelper()
+    form.helper.layout = Layout("clearable_file")
+
+    assert parse_form(form) == parse_expected("test_clearable_file_field_failing.html")
+
+    form.helper.layout = Layout("file_field")
+
+    assert parse_form(form) == parse_expected("test_file_field_failing.html")
 
 
 def test_row():
@@ -562,3 +601,50 @@ def test_row():
         )
     )
     assert parse_form(form) == parse_expected("row.html")
+
+
+def test_html_label_escape():
+    form = LabelForm()
+    form.helper = FormHelper()
+    form.helper.layout = Layout("text_input")
+    html = render_crispy_form(form)
+    assert "&lt;&gt;&amp;" in html
+
+
+def test_tabular_formset_layout():
+    SampleFormSet = formset_factory(SampleForm, extra=3)
+    formset = SampleFormSet()
+    formset.helper = FormHelper()
+    formset.helper.template = "bootstrap5/table_inline_formset.html"
+    assert parse_form(formset) == parse_expected("test_tabular_formset_layout.html")
+
+    SampleFormSet = formset_factory(SampleForm, extra=3)
+    data = {
+        "form-TOTAL_FORMS": "1",
+        "form-INITIAL_FORMS": "0",
+    }
+    formset = SampleFormSet(data)
+    formset.helper = FormHelper()
+    formset.helper.template = "bootstrap5/table_inline_formset.html"
+    assert parse_form(formset) == parse_expected(
+        "test_tabular_formset_layout_failing.html"
+    )
+
+
+def test_flat_attrs_safe():
+    form = SampleForm()
+    form.helper = FormHelper()
+    form.helper.layout = Layout(
+        Row(
+            aria_labelledby="test<>%",
+        )
+    )
+    form.helper.form_tag = False
+    assert parse_form(form) == parse_expected("flat_attrs.html")
+
+
+def test_help_text_escape():
+    form = HelpTextForm()
+    form.helper = FormHelper()
+    form.helper.form_tag = False
+    assert parse_form(form) == parse_expected("help_text_escape.html")

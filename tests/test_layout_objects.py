@@ -1,3 +1,5 @@
+import random
+
 import pytest
 from crispy_forms.bootstrap import (
     Accordion,
@@ -16,14 +18,23 @@ from crispy_forms.bootstrap import (
 )
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import HTML, Field, Layout, MultiWidgetField
-from crispy_forms.tests.utils import contains_partial
 from crispy_forms.utils import render_crispy_form
 from django import forms
 from django.template import Context, Template
 from django.utils.translation import activate, deactivate
 from django.utils.translation import gettext as _
 
-from .forms import CheckboxesSampleForm, InputsFrom, SampleForm
+from crispy_bootstrap5.bootstrap5 import BS5Accordion, FloatingField
+
+from .forms import (
+    CheckboxesSampleForm,
+    CustomCheckboxSelectMultiple,
+    CustomRadioSelect,
+    GroupedChoiceForm,
+    InputsForm,
+    SampleForm,
+    SampleFormCustomWidgets,
+)
 from .utils import parse_expected, parse_form
 
 
@@ -165,23 +176,17 @@ def test_remove_labels():
     ],
 )
 def test_inputs(input, expected):
-    form = InputsFrom()
+    form = InputsForm()
     form.helper = FormHelper()
     form.helper.layout = Layout(input)
     assert parse_form(form) == parse_expected(expected)
 
 
 class TestBootstrapLayoutObjects:
-    def test_custom_django_widget(self, settings):
-        class CustomRadioSelect(forms.RadioSelect):
-            pass
-
-        class CustomCheckboxSelectMultiple(forms.CheckboxSelectMultiple):
-            pass
-
+    def test_custom_django_widget(self):
         # Make sure an inherited RadioSelect gets rendered as it
-        form = CheckboxesSampleForm()
-        form.fields["inline_radios"].widget = CustomRadioSelect()
+        form = SampleFormCustomWidgets()
+        assert isinstance(form.fields["inline_radios"].widget, CustomRadioSelect)
         form.helper = FormHelper()
         form.helper.layout = Layout("inline_radios")
 
@@ -190,44 +195,36 @@ class TestBootstrapLayoutObjects:
         assert 'class="form-check-input"' in html
 
         # Make sure an inherited CheckboxSelectMultiple gets rendered as it
-        form.fields["checkboxes"].widget = CustomCheckboxSelectMultiple()
+        assert isinstance(
+            form.fields["checkboxes"].widget, CustomCheckboxSelectMultiple
+        )
         form.helper.layout = Layout("checkboxes")
         html = render_crispy_form(form)
         assert 'class="form-check-input"' in html
 
-    def test_prepended_appended_text(self, settings):
+    def test_prepended_appended_text(self):
         test_form = SampleForm()
         test_form.helper = FormHelper()
         test_form.helper.layout = Layout(
-            PrependedAppendedText("email", "@", "gmail.com"),
+            PrependedAppendedText(
+                "email", "@<>&", "gmail.com", css_class="form-control-lg"
+            ),
             AppendedText("password1", "#"),
             PrependedText("password2", "$"),
         )
-        html = render_crispy_form(test_form)
-
-        # Check form parameters
-        assert html.count('<span class="input-group-text">@</span>') == 1
-        assert html.count('<span class="input-group-text">gmail.com</span>') == 1
-        assert html.count('<span class="input-group-text">#</span>') == 1
-        assert html.count('<span class="input-group-text">$</span>') == 1
-        test_form.helper.layout = Layout(
-            PrependedAppendedText(
-                "email", "@", "gmail.com", css_class="form-control-lg"
-            )
+        assert parse_form(test_form) == parse_expected(
+            "test_prepended_appended_text.html"
         )
-        html = render_crispy_form(test_form)
 
-        assert 'class="form-control-lg' in html
-        assert contains_partial(html, '<span class="input-group-text"/>')
-
-    def test_inline_radios(self, settings):
+    def test_inline_radios(self):
         test_form = CheckboxesSampleForm()
         test_form.helper = FormHelper()
         test_form.helper.layout = Layout(InlineRadios("inline_radios"))
         html = render_crispy_form(test_form)
         assert html.count('form-check-inline"') == 2
 
-    def test_accordion_and_accordiongroup(self, settings):
+    def test_accordion_and_accordiongroup(self):
+        random.seed(0)
         form = SampleForm()
         form.helper = FormHelper()
         form.helper.form_tag = False
@@ -239,7 +236,7 @@ class TestBootstrapLayoutObjects:
         )
         assert parse_form(form) == parse_expected("accordion.html")
 
-    def test_accordion_active_false_not_rendered(self, settings):
+    def test_accordion_active_false_not_rendered(self):
         test_form = SampleForm()
         test_form.helper = FormHelper()
         test_form.helper.layout = Layout(
@@ -272,6 +269,80 @@ class TestBootstrapLayoutObjects:
             == 0
         )
 
+    def test_bs5accordion(self):
+        random.seed(0)
+        form = SampleForm()
+        form.helper = FormHelper()
+        form.helper.form_tag = False
+        form.helper.layout = Layout(
+            BS5Accordion(
+                AccordionGroup("one", "first_name"),
+                AccordionGroup("two", "password1", "password2"),
+            )
+        )
+        assert parse_form(form) == parse_expected("accordion.html")
+
+    def test_bs5accordion_active_false_not_rendered(self):
+        test_form = SampleForm()
+        test_form.helper = FormHelper()
+        test_form.helper.layout = Layout(
+            BS5Accordion(
+                AccordionGroup("one", "first_name"),
+                # there is no ``active`` kwarg here.
+            )
+        )
+
+        # The first time, there should be one of them there.
+        html = render_crispy_form(test_form)
+
+        accordion_class = "collapse show"
+
+        assert (
+            html.count('<div id="one" class="accordion-collapse %s"' % accordion_class)
+            == 1
+        )
+
+        test_form.helper.layout = Layout(
+            BS5Accordion(
+                AccordionGroup("one", "first_name", active=False),
+            )  # now ``active`` manually set as False
+        )
+
+        # This time, it shouldn't be there at all.
+        html = render_crispy_form(test_form)
+        assert (
+            html.count('<div id="one" class="accordion-collapse %s"' % accordion_class)
+            == 0
+        )
+
+    def test_bs5accordion_flush(self):
+        random.seed(0)
+        test_form = SampleForm()
+        test_form.helper = FormHelper()
+        test_form.helper.form_tag = False
+        test_form.helper.layout = Layout(
+            BS5Accordion(
+                AccordionGroup("one", "first_name"),
+                AccordionGroup("two", "password1", "password2"),
+                flush=True,
+            )
+        )
+        assert parse_form(test_form) == parse_expected("accordion_flush.html")
+
+    def test_bs5accordion_always_open(self):
+        random.seed(0)
+        test_form = SampleForm()
+        test_form.helper = FormHelper()
+        test_form.helper.form_tag = False
+        test_form.helper.layout = Layout(
+            BS5Accordion(
+                AccordionGroup("one", "first_name"),
+                AccordionGroup("two", "password1", "password2"),
+                always_open=True,
+            )
+        )
+        assert parse_form(test_form) == parse_expected("accordion_always_open.html")
+
     def test_alert(self):
         test_form = SampleForm()
         test_form.helper = FormHelper()
@@ -291,7 +362,7 @@ class TestBootstrapLayoutObjects:
         assert html.count('<div class="alert alert-block"') == 1
         assert html.count("Testing...") == 1
 
-    def test_tab_and_tab_holder(self, settings):
+    def test_tab_and_tab_holder(self):
         test_form = SampleForm()
         test_form.helper = FormHelper()
         test_form.helper.layout = Layout(
@@ -371,7 +442,7 @@ class TestBootstrapLayoutObjects:
         assert 'class="first"' in html
         assert 'class="second"' in html
 
-    def test_field_with_buttons(self, settings):
+    def test_field_with_buttons(self):
         form = SampleForm()
         form.helper = FormHelper()
         form.helper.layout = Layout(
@@ -400,8 +471,6 @@ class TestBootstrapLayoutObjects:
         assert html.count('name="whatever"') == 1
         assert html.count('value="something"') == 1
 
-        assert html.count('class="input-group-append') == 1
-
     def test_hidden_fields(self):
         form = SampleForm()
         # All fields hidden
@@ -421,11 +490,10 @@ class TestBootstrapLayoutObjects:
         assert html.count('type="hidden"') == 5
         assert html.count("<label") == 0
 
-    def test_multiplecheckboxes(self, settings):
+    def test_multiplecheckboxes(self):
         test_form = CheckboxesSampleForm()
         html = render_crispy_form(test_form)
-
-        assert html.count('checked="checked"') == 6
+        assert html.count("checked") == 6
 
         test_form.helper = FormHelper(test_form)
         test_form.helper[1].wrap(InlineCheckboxes, inline=True)
@@ -438,18 +506,18 @@ class TestBootstrapLayoutObjects:
         html = render_crispy_form(test_form)
 
         expected_ids = [
+            "checkboxes_0",
             "checkboxes_1",
             "checkboxes_2",
-            "checkboxes_3",
+            "alphacheckboxes_0",
             "alphacheckboxes_1",
             "alphacheckboxes_2",
-            "alphacheckboxes_3",
+            "numeric_multiple_checkboxes_0",
             "numeric_multiple_checkboxes_1",
             "numeric_multiple_checkboxes_2",
-            "numeric_multiple_checkboxes_3",
         ]
         for id_suffix in expected_ids:
-            expected_str = 'id="id_{id_suffix}"'.format(id_suffix=id_suffix)
+            expected_str = f'id="id_{id_suffix}"'
             assert html.count(expected_str) == 1
 
     def test_inline_field(self):
@@ -461,3 +529,36 @@ class TestBootstrapLayoutObjects:
         )
         form.helper.form_class = "row row-cols-lg-auto align-items-center"
         assert parse_form(form) == parse_expected("test_inline_field.html")
+
+    def test_float_field(self):
+        form = SampleForm()
+        form.helper = FormHelper()
+        form.helper.layout = Layout(
+            FloatingField("first_name"),
+        )
+        assert parse_form(form) == parse_expected("test_floating_field.html")
+
+        form = InputsForm({})
+        form.helper = FormHelper()
+        form.helper.layout = Layout(
+            FloatingField("text_area"),
+            FloatingField("select_input"),
+        )
+        assert parse_form(form) == parse_expected("test_floating_field_failing.html")
+
+    def test_grouped_checkboxes_radios(self):
+        form = GroupedChoiceForm()
+        form.helper = FormHelper()
+        form.helper.layout = Layout("checkbox_select_multiple")
+        assert parse_form(form) == parse_expected("test_grouped_checkboxes.html")
+        form.helper.layout = Layout("radio")
+        assert parse_form(form) == parse_expected("test_grouped_radios.html")
+
+        form = GroupedChoiceForm({})
+        form.helper = FormHelper()
+        form.helper.layout = Layout("checkbox_select_multiple")
+        assert parse_form(form) == parse_expected(
+            "test_grouped_checkboxes_failing.html"
+        )
+        form.helper.layout = Layout("radio")
+        assert parse_form(form) == parse_expected("test_grouped_radios_failing.html")
